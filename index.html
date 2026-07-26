@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<title>
+NASDAQ Historical Analysis
+</title>
+
+
+<link rel="stylesheet" href="style.css">
+
+
+</head>
+
+
+<body>
+
+
+<h1>
+NASDAQ Historical Stock Downloader
+</h1>
+
+
+<div class="container">
+
+
+<label>
+Ticker Symbol
+</label>
+
+<input id="symbol" value="NVDA">
+
+
+<label>
+From Date
+</label>
+
+<input id="fromdate"
+value="2021-07-26">
+
+
+<label>
+To Date
+</label>
+
+<input id="todate"
+value="2026-07-26">
+
+
+
+<button onclick="downloadHistory()">
+Download History
+</button>
+
+
+<button onclick="exportExcel()">
+Export Excel
+</button>
+
+
+
+<p id="status"></p>
+
+
+<div id="result"></div>
+
+
+</div>
+
+
+
+<script src="app.js"></script>
+
+
+</body>
+
+</html>
