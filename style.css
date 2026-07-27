@@ -486,21 +486,28 @@ th:hover {
 }
 
 th.sortable::after {
-    content: ' ↕';
+    content: ' \2195';
     opacity: 0.4;
     font-size: 0.75rem;
 }
 
 th.sort-asc::after {
-    content: ' ↑';
+    content: ' \2191';
     opacity: 1;
     color: var(--accent);
 }
 
 th.sort-desc::after {
-    content: ' ↓';
+    content: ' \2193';
     opacity: 1;
     color: var(--accent);
+}
+
+/* RIGHT-ALIGNED NUMERIC COLUMNS (both header and data) */
+th.numeric,
+td.numeric {
+    text-align: right;
+    font-family: var(--font-mono);
 }
 
 td {
@@ -526,12 +533,6 @@ td:first-child,
 th:first-child {
     font-weight: 600;
     color: var(--accent-light);
-}
-
-/* Number alignment */
-td.numeric {
-    text-align: right;
-    font-family: var(--font-mono);
 }
 
 /* ============================================

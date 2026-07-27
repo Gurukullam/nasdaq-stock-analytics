@@ -86,6 +86,10 @@ function renderTable(containerId, rows, tableId) {
         return;
     }
 
+    const isHistorical = tableId === 'historicalTable';
+    const priceCols = ['Open', 'High', 'Low', 'Close'];
+    const numericCols = isHistorical ? [...priceCols, 'Volume'] : [];
+
     const table = document.createElement('table');
     table.id = tableId;
 
@@ -94,8 +98,17 @@ function renderTable(containerId, rows, tableId) {
     const thr = document.createElement('tr');
     cols.forEach(function(c) {
         const th = document.createElement('th');
-        th.textContent = c;
-        th.className = 'sortable';
+        // Historical: prepend $ to price column headers
+        if (isHistorical && priceCols.includes(c)) {
+            th.textContent = '$' + c;
+            th.className = 'sortable numeric';
+        } else if (isHistorical && c === 'Volume') {
+            th.textContent = c;
+            th.className = 'sortable numeric';
+        } else {
+            th.textContent = c;
+            th.className = 'sortable';
+        }
         th.onclick = function() { sortTable(tableId, c); };
         thr.appendChild(th);
     });
@@ -111,8 +124,20 @@ function renderTable(containerId, rows, tableId) {
             if (v !== '' && v !== null && v !== undefined) {
                 const num = parseFloat(v);
                 if (!isNaN(num) && c !== 'Metric' && c !== 'Symbol' && c !== 'Date') {
-                    td.textContent = formatFinancialNumber(num);
-                    td.className = 'numeric';
+                    if (isHistorical) {
+                        if (c === 'Volume') {
+                            // Full number with commas, no $, no abbreviation
+                            td.textContent = num.toLocaleString('en-US');
+                        } else {
+                            // Price: 2 decimal places, no $ prefix (it's in header)
+                            td.textContent = num.toFixed(2);
+                        }
+                        td.className = 'numeric';
+                    } else {
+                        // Financials: keep existing $B/$M formatting
+                        td.textContent = formatFinancialNumber(num);
+                        td.className = 'numeric';
+                    }
                 } else {
                     td.textContent = v;
                 }
@@ -138,7 +163,7 @@ function sortTable(tableId, col) {
     const tbody = table.querySelector('tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
     const headers = Array.from(table.querySelectorAll('thead th'));
-    const hIndex = headers.findIndex(function(th) { return th.textContent === col; });
+    const hIndex = headers.findIndex(function(th) { return th.textContent === col || th.textContent === '$' + col; });
     if (hIndex === -1) return;
 
     const dir = sortMemory[tableId + col] === 'asc' ? 'desc' : 'asc';
@@ -148,8 +173,8 @@ function sortTable(tableId, col) {
     headers[hIndex].classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
 
     rows.sort(function(a, b) {
-        const av = a.children[hIndex].textContent.replace(/[$,BTM%]/g, '');
-        const bv = b.children[hIndex].textContent.replace(/[$,BTM%]/g, '');
+        const av = a.children[hIndex].textContent.replace(/[$,]/g, '');
+        const bv = b.children[hIndex].textContent.replace(/[$,]/g, '');
         const an = parseFloat(av);
         const bn = parseFloat(bv);
         if (!isNaN(an) && !isNaN(bn) && av !== '' && bv !== '') {
