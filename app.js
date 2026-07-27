@@ -15,6 +15,9 @@ let appConfig = { ...DEFAULT_CONFIG };
 let financialCache = null;
 let historicalCache = null;
 
+/* ------------------------------------------
+   CONFIG
+   ------------------------------------------ */
 function loadConfig() {
     const apiEl   = document.getElementById('apiBaseUrl');
     const batchEl = document.getElementById('batchSize');
@@ -33,6 +36,9 @@ function parseTickers(raw) {
         .filter(s => /^[A-Z]{1,5}$/.test(s));
 }
 
+/* ------------------------------------------
+   UI HELPERS
+   ------------------------------------------ */
 function setProgressVisible(tab, visible) {
     const el = document.getElementById(tab + 'Progress');
     if (el) el.classList.toggle('hidden', !visible);
@@ -51,7 +57,7 @@ function logError(tab, msg) {
     box.classList.remove('hidden');
     const row = document.createElement('div');
     row.className = 'error-item';
-    row.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    row.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
     box.appendChild(row);
 }
 
@@ -62,11 +68,11 @@ function clearErrors(tab) {
 
 function setRecordCount(tab, n) {
     const el = document.getElementById(tab + 'Count');
-    if (el) el.textContent = `${n.toLocaleString()} record${n !== 1 ? 's' : ''}`;
+    if (el) el.textContent = n.toLocaleString() + ' record' + (n !== 1 ? 's' : '');
 }
 
 /* ------------------------------------------
-   NUMBER FORMATTER — matches NASDAQ style
+   NUMBER FORMATTER
    ------------------------------------------ */
 function formatFinancialNumber(num) {
     if (num === 0) return '$0';
@@ -98,20 +104,20 @@ function renderTable(containerId, rows, tableId) {
     const cols = Object.keys(rows[0]);
     const thead = document.createElement('thead');
     const thr = document.createElement('tr');
-    cols.forEach(c => {
+    cols.forEach(function(c) {
         const th = document.createElement('th');
         th.textContent = c;
         th.className = 'sortable';
-        th.onclick = () => sortTable(tableId, c);
+        th.onclick = function() { sortTable(tableId, c); };
         thr.appendChild(th);
     });
     thead.appendChild(thr);
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    rows.forEach(r => {
+    rows.forEach(function(r) {
         const tr = document.createElement('tr');
-        cols.forEach(c => {
+        cols.forEach(function(c) {
             const td = document.createElement('td');
             let v = r[c];
             if (v !== '' && v !== null && v !== undefined) {
@@ -146,17 +152,17 @@ function sortTable(tableId, col) {
     if (!table) return;
     const tbody = table.querySelector('tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
-    const hIndex = Array.from(table.querySelectorAll('thead th'))
-                        .findIndex(th => th.textContent === col);
+    const headers = Array.from(table.querySelectorAll('thead th'));
+    const hIndex = headers.findIndex(function(th) { return th.textContent === col; });
     if (hIndex === -1) return;
 
     const dir = sortMemory[tableId + col] === 'asc' ? 'desc' : 'asc';
     sortMemory[tableId + col] = dir;
 
-    table.querySelectorAll('thead th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
-    table.querySelectorAll('thead th')[hIndex].classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    headers.forEach(function(th) { th.classList.remove('sort-asc', 'sort-desc'); });
+    headers[hIndex].classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
 
-    rows.sort((a, b) => {
+    rows.sort(function(a, b) {
         const av = a.children[hIndex].textContent.replace(/[$,BTM%]/g, '');
         const bv = b.children[hIndex].textContent.replace(/[$,BTM%]/g, '');
         const an = parseFloat(av);
@@ -167,14 +173,14 @@ function sortTable(tableId, col) {
         return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
 
-    rows.forEach(r => tbody.appendChild(r));
+    rows.forEach(function(r) { tbody.appendChild(r); });
 }
 
 function appFilterTable(tableId, query) {
     const table = document.getElementById(tableId);
     if (!table) return;
     const q = query.toLowerCase();
-    table.querySelectorAll('tbody tr').forEach(row => {
+    table.querySelectorAll('tbody tr').forEach(function(row) {
         row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
     });
 }
@@ -182,17 +188,18 @@ function appFilterTable(tableId, query) {
 /* ------------------------------------------
    NETWORK
    ------------------------------------------ */
-async function fetchWithRetry(url, opts = {}, attempt = 1) {
+async function fetchWithRetry(url, opts, attempt) {
+    attempt = attempt || 1;
     try {
-        const res = await fetch(url, opts);
+        const res = await fetch(url, opts || {});
         if (!res.ok && res.status >= 500 && attempt < appConfig.retryAttempts) {
-            throw new Error(`Server ${res.status}`);
+            throw new Error('Server ' + res.status);
         }
         return res;
     } catch (err) {
         if (attempt < appConfig.retryAttempts) {
             const wait = appConfig.retryDelayMs * attempt;
-            await new Promise(r => setTimeout(r, wait));
+            await new Promise(function(r) { setTimeout(r, wait); });
             return fetchWithRetry(url, opts, attempt + 1);
         }
         throw err;
@@ -206,49 +213,51 @@ async function downloadHistory() {
     loadConfig();
     clearErrors('historical');
 
-    const raw  = document.getElementById('symbols')?.value || '';
+    const raw = document.getElementById('symbols') ? document.getElementById('symbols').value : '';
     const tickers = parseTickers(raw);
 
     if (!tickers.length) { alert('Enter at least one valid ticker.'); return; }
     if (tickers.length > appConfig.maxTickers) {
-        alert(`Limit is ${appConfig.maxTickers} tickers. You entered ${tickers.length}.`); return;
+        alert('Limit is ' + appConfig.maxTickers + ' tickers. You entered ' + tickers.length + '.'); return;
     }
 
-    const from = document.getElementById('fromDate')?.value;
-    const to   = document.getElementById('toDate')?.value;
+    const from = document.getElementById('fromDate') ? document.getElementById('fromDate').value : '';
+    const to = document.getElementById('toDate') ? document.getElementById('toDate').value : '';
 
     setProgressVisible('historical', true);
-    updateProgress('historical', 5, `Preparing ${tickers.length} ticker(s)…`);
+    updateProgress('historical', 5, 'Preparing ' + tickers.length + ' ticker(s)...');
 
     try {
-        const url = new URL(`${appConfig.apiBaseUrl}/api/historical`);
+        const url = new URL(appConfig.apiBaseUrl + '/api/historical');
         url.searchParams.set('tickers', tickers.join(','));
         if (from) url.searchParams.set('from', from);
-        if (to)   url.searchParams.set('to', to);
+        if (to) url.searchParams.set('to', to);
 
-        updateProgress('historical', 25, 'Calling NASDAQ API…');
+        updateProgress('historical', 25, 'Calling NASDAQ API...');
         const res = await fetchWithRetry(url.toString());
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + res.statusText);
 
-        updateProgress('historical', 70, 'Parsing response…');
+        updateProgress('historical', 70, 'Parsing response...');
         const payload = await res.json();
 
-        let data = payload.data ?? payload.historical ?? payload;
+        let data = payload.data || payload.historical || payload;
         if (!Array.isArray(data)) data = [];
 
-        if (payload.errors?.length) payload.errors.forEach(e => logError('historical', e));
+        if (payload.errors && payload.errors.length) {
+            payload.errors.forEach(function(e) { logError('historical', e); });
+        }
 
         historicalCache = data;
-        updateProgress('historical', 90, 'Rendering…');
+        updateProgress('historical', 90, 'Rendering...');
         renderTable('historicalResult', data, 'historicalTable');
-        updateProgress('historical', 100, `Done. ${data.length} rows.`);
+        updateProgress('historical', 100, 'Done. ' + data.length + ' rows.');
 
     } catch (err) {
         logError('historical', err.message);
         updateProgress('historical', 0, 'Failed.');
     } finally {
-        setTimeout(() => setProgressVisible('historical', false), 2500);
+        setTimeout(function() { setProgressVisible('historical', false); }, 2500);
     }
 }
 
@@ -259,31 +268,33 @@ async function loadFinancials() {
     loadConfig();
     clearErrors('financials');
 
-    const raw = document.getElementById('financialSymbols')?.value || '';
+    const raw = document.getElementById('financialSymbols') ? document.getElementById('financialSymbols').value : '';
     const tickers = parseTickers(raw);
 
     if (!tickers.length) { alert('Enter at least one valid ticker.'); return; }
 
     setProgressVisible('financials', true);
-    updateProgress('financials', 5, `Loading SEC data for ${tickers.length} ticker(s)…`);
+    updateProgress('financials', 5, 'Loading SEC data for ' + tickers.length + ' ticker(s)...');
 
     try {
-        const url = new URL(`${appConfig.apiBaseUrl}/api/financials`);
+        const url = new URL(appConfig.apiBaseUrl + '/api/financials');
         url.searchParams.set('tickers', tickers.join(','));
 
-        updateProgress('financials', 30, 'Fetching SEC Company Facts…');
+        updateProgress('financials', 30, 'Fetching SEC Company Facts...');
         const res = await fetchWithRetry(url.toString());
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + res.statusText);
 
-        updateProgress('financials', 70, 'Normalising statements…');
+        updateProgress('financials', 70, 'Normalising statements...');
         const payload = await res.json();
 
-        if (payload.errors?.length) payload.errors.forEach(e => logError('financials', e));
+        if (payload.errors && payload.errors.length) {
+            payload.errors.forEach(function(e) { logError('financials', e); });
+        }
 
         financialCache = payload;
         window.selectedPeriod = window.selectedPeriod || 'annual';
-        window.selectedType   = window.selectedType   || 'income';
+        window.selectedType = window.selectedType || 'income';
 
         const ctrl = document.getElementById('financialControls');
         if (ctrl) ctrl.classList.remove('hidden');
@@ -296,7 +307,7 @@ async function loadFinancials() {
         logError('financials', err.message);
         updateProgress('financials', 0, 'Failed.');
     } finally {
-        setTimeout(() => setProgressVisible('financials', false), 2500);
+        setTimeout(function() { setProgressVisible('financials', false); }, 2500);
     }
 }
 
@@ -312,15 +323,17 @@ function showFinancialData(type) {
     const period = window.selectedPeriod || 'annual';
     let merged = [];
 
-    const tickers = Object.keys(financialCache).filter(k => k !== 'errors' && k !== 'metadata');
+    const tickers = Object.keys(financialCache).filter(function(k) {
+        return k !== 'errors' && k !== 'metadata';
+    });
 
-    tickers.forEach(sym => {
+    tickers.forEach(function(sym) {
         const company = financialCache[sym];
         if (!company) return;
-        const stmt = company[period]?.[type];
+        const stmt = company[period] ? company[period][type] : null;
         if (!Array.isArray(stmt)) return;
 
-        stmt.forEach(row => {
+        stmt.forEach(function(row) {
             if (!row.Symbol && !row.symbol) row.Symbol = sym;
         });
         merged = merged.concat(stmt);
@@ -338,33 +351,4 @@ function saveSettings() {
 }
 
 function resetSettings() {
-    const apiEl   = document.getElementById('apiBaseUrl');
-    const batchEl = document.getElementById('batchSize');
-    const maxEl   = document.getElementById('maxTickers');
-
-    if (apiEl)   apiEl.value   = DEFAULT_CONFIG.apiBaseUrl;
-    if (batchEl) batchEl.value = DEFAULT_CONFIG.batchSize;
-    if (maxEl)   maxEl.value   = DEFAULT_CONFIG.maxTickers;
-
-    appConfig = { ...DEFAULT_CONFIG };
-}
-
-/* ------------------------------------------
-   EXCEL EXPORT
-   ------------------------------------------ */
-function exportExcel(source) {
-    const tableId = source === 'historical' ? 'historicalTable' : 'financialTable';
-    const data = extractTableData(tableId);
-
-    if (typeof generateExcel === 'function') {
-        generateExcel(data, source);
-    } else {
-        downloadCSV(data, `NASDAQ_${source}_${new Date().toISOString().slice(0,10)}.csv`);
-    }
-}
-
-function extractTableData(tableId) {
-    const table = document.getElementById(tableId);
-    if (!table) return [];
-    const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent);
-    return Array.from(table.querySelectorAll('tbody tr
+    const apiEl   =
