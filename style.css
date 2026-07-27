@@ -53,7 +53,7 @@ body {
     background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
     border-bottom: 1px solid var(--border);
     padding: 2rem 1.5rem 1.5rem;
-    text-align: center;
+    text-align: center;  /* <-- ensure this line exists */
 }
 
 .app-header h1 {

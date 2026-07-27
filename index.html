@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="NASDAQ Analysis AI - Institutional-grade multi-ticker analytics">
-    <title>NASDAQ Analysis AI Platform</title>
+    <meta name="description" content="NASDAQ Analysis - Multi-ticker analytics">
+    <title>NASDAQ Analysis</title>
     <link rel="stylesheet" href="style.css">
-    <!-- SheetJS must be inside <head> or <body>, never outside <html> -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
     <header class="app-header">
-        <h1>NASDAQ Analysis AI</h1>
-        <p class="subtitle">Institutional-Grade Multi-Ticker Analytics Platform</p>
+        <h1>NASDAQ Analysis</h1>
+        <p class="subtitle">Multi-Ticker Analytics Platform</p>
     </header>
 
     <main class="container">
@@ -66,10 +65,10 @@
 
                 <div class="button-row">
                     <button class="btn btn-primary" onclick="downloadHistory()">
-                        <span class="icon" aria-hidden="true">📥</span> Download History
+                        <span class="icon" aria-hidden="true">&#128229;</span> Download History
                     </button>
                     <button class="btn btn-secondary" onclick="exportExcel('historical')">
-                        <span class="icon" aria-hidden="true">📊</span> Export Excel
+                        <span class="icon" aria-hidden="true">&#128202;</span> Export Excel
                     </button>
                     <button class="btn btn-ghost" onclick="clearResults('historical')">Clear</button>
                 </div>
@@ -115,10 +114,10 @@
 
                 <div class="button-row">
                     <button class="btn btn-primary" onclick="loadFinancials()">
-                        <span class="icon" aria-hidden="true">📥</span> Load Financial Data
+                        <span class="icon" aria-hidden="true">&#128229;</span> Load Financial Data
                     </button>
                     <button class="btn btn-secondary" onclick="exportExcel('financials')">
-                        <span class="icon" aria-hidden="true">📊</span> Export Excel
+                        <span class="icon" aria-hidden="true">&#128202;</span> Export Excel
                     </button>
                     <button class="btn btn-ghost" onclick="clearResults('financials')">Clear</button>
                 </div>
@@ -214,19 +213,11 @@
 
     </main>
 
-    <footer class="app-footer">
-        <p>NASDAQ Analysis AI v2.0 &middot; Phase 1 &middot; Official Data Sources Only</p>
-    </footer>
-
-    <!-- Scripts loaded INSIDE the document -->
-    <!-- Uncomment when you create these files: -->
-    <!-- <script src="config.js"></script> -->
-    <!-- <script src="table.js"></script> -->
+    <!-- Scripts -->
     <script src="excel.js"></script>
     <script src="app.js"></script>
 
     <script>
-        // Tab switching
         function openTab(tabName, btn) {
             document.querySelectorAll('.tab-content').forEach(t => {
                 t.classList.remove('active');
