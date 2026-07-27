@@ -1,79 +1,317 @@
 <!DOCTYPE html>
-
-<html>
-
+<html lang="en">
 <head>
-
-<title>
-NASDAQ Historical Analysis
-</title>
-
-
-<link rel="stylesheet" href="style.css">
-
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="NASDAQ Analysis AI - Institutional-grade multi-ticker analytics">
+    <title>NASDAQ Analysis AI Platform</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- SheetJS must be inside <head> or <body>, never outside <html> -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
-
-
 <body>
 
+    <header class="app-header">
+        <h1>NASDAQ Analysis AI</h1>
+        <p class="subtitle">Institutional-Grade Multi-Ticker Analytics Platform</p>
+    </header>
 
-<h1>
-NASDAQ Historical Stock Downloader
-</h1>
+    <main class="container">
 
+        <!-- ========================= -->
+        <!-- TAB NAVIGATION            -->
+        <!-- ========================= -->
+        <nav class="tab-nav" role="tablist">
+            <button class="tab-btn active" onclick="openTab('historical', this)" role="tab" aria-selected="true">
+                Historical Data
+            </button>
+            <button class="tab-btn" onclick="openTab('financials', this)" role="tab" aria-selected="false">
+                Financial Statements
+            </button>
+            <button class="tab-btn" onclick="openTab('portfolio', this)" disabled title="Coming in Phase 2" role="tab" aria-selected="false">
+                Portfolio
+            </button>
+            <button class="tab-btn" onclick="openTab('comparison', this)" disabled title="Coming in Phase 2" role="tab" aria-selected="false">
+                Comparison
+            </button>
+            <button class="tab-btn" onclick="openTab('settings', this)" role="tab" aria-selected="false">
+                Settings
+            </button>
+        </nav>
 
-<div class="container">
+        <!-- ========================= -->
+        <!-- HISTORICAL DATA TAB       -->
+        <!-- ========================= -->
+        <section id="historical" class="tab-content active" role="tabpanel">
+            <div class="panel">
+                <h2>Historical Price Data</h2>
 
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="symbols">Ticker Symbols</label>
+                        <textarea id="symbols" rows="3" placeholder="NVDA, AAPL, MSFT, AMD, GOOG&#10;TSLA META AMZN&#10;INTC;CRM;IBM">NVDA, AAPL, MSFT</textarea>
+                        <small class="hint">Separate by comma, space, semicolon, or new line. Maximum 500 symbols.</small>
+                    </div>
 
-<label>
-Ticker Symbol
-</label>
+                    <div class="form-group">
+                        <label for="fromDate">From Date</label>
+                        <input type="date" id="fromDate" value="2021-07-26">
+                    </div>
 
-<input id="symbol" value="NVDA">
+                    <div class="form-group">
+                        <label for="toDate">To Date</label>
+                        <input type="date" id="toDate" value="2026-07-26">
+                    </div>
+                </div>
 
+                <div class="button-row">
+                    <button class="btn btn-primary" onclick="downloadHistory()">
+                        <span class="icon" aria-hidden="true">📥</span> Download History
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportExcel('historical')">
+                        <span class="icon" aria-hidden="true">📊</span> Export Excel
+                    </button>
+                    <button class="btn btn-ghost" onclick="clearResults('historical')">Clear</button>
+                </div>
 
-<label>
-From Date
-</label>
+                <!-- Progress & Status -->
+                <div id="historicalProgress" class="progress-container hidden">
+                    <div class="progress-bar" aria-label="Download progress">
+                        <div id="historicalProgressBar" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <p id="historicalStatus" class="status-text">Ready</p>
+                </div>
 
-<input id="fromdate"
-value="2021-07-26">
+                <!-- Error Log -->
+                <div id="historicalErrors" class="error-log hidden" role="log" aria-live="polite"></div>
 
+                <!-- Table Controls -->
+                <div class="table-controls">
+                    <input type="text" id="historicalFilter" class="filter-input" placeholder="Filter results..." oninput="filterTable('historicalTable', this.value)">
+                    <span id="historicalCount" class="record-count">0 records</span>
+                </div>
 
-<label>
-To Date
-</label>
+                <!-- Results -->
+                <div id="historicalResult" class="table-container">
+                    <div class="empty-state">Enter ticker symbols and click <strong>Download History</strong> to begin.</div>
+                </div>
+            </div>
+        </section>
 
-<input id="todate"
-value="2026-07-26">
+        <!-- ========================= -->
+        <!-- FINANCIAL STATEMENTS TAB  -->
+        <!-- ========================= -->
+        <section id="financials" class="tab-content" role="tabpanel">
+            <div class="panel">
+                <h2>Financial Statements &amp; Ratios</h2>
 
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="financialSymbols">Ticker Symbols</label>
+                        <textarea id="financialSymbols" rows="3" placeholder="NVDA, AAPL, MSFT, AMD, GOOG">NVDA</textarea>
+                        <small class="hint">Separate by comma, space, semicolon, or new line.</small>
+                    </div>
+                </div>
 
+                <div class="button-row">
+                    <button class="btn btn-primary" onclick="loadFinancials()">
+                        <span class="icon" aria-hidden="true">📥</span> Load Financial Data
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportExcel('financials')">
+                        <span class="icon" aria-hidden="true">📊</span> Export Excel
+                    </button>
+                    <button class="btn btn-ghost" onclick="clearResults('financials')">Clear</button>
+                </div>
 
-<button onclick="downloadHistory()">
-Download History
-</button>
+                <!-- Financial Controls (hidden until loaded) -->
+                <div id="financialControls" class="controls-row hidden">
+                    <div class="segmented-control">
+                        <button id="annualBtn" class="seg-btn active" onclick="setPeriod('annual')">Annual</button>
+                        <button id="quarterBtn" class="seg-btn" onclick="setPeriod('quarterly')">Quarterly</button>
+                    </div>
 
+                    <div class="segmented-control">
+                        <button id="incomeBtn" class="seg-btn active" onclick="showFinancial('income')">Income Statement</button>
+                        <button id="balanceBtn" class="seg-btn" onclick="showFinancial('balance')">Balance Sheet</button>
+                        <button id="cashBtn" class="seg-btn" onclick="showFinancial('cashflow')">Cash Flow</button>
+                        <button id="ratioBtn" class="seg-btn" onclick="showFinancial('ratios')">Ratios</button>
+                    </div>
+                </div>
 
-<button onclick="exportExcel()">
-Export Excel
-</button>
+                <!-- Progress & Status -->
+                <div id="financialProgress" class="progress-container hidden">
+                    <div class="progress-bar" aria-label="Load progress">
+                        <div id="financialProgressBar" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <p id="financialStatus" class="status-text">Ready</p>
+                </div>
 
+                <!-- Error Log -->
+                <div id="financialErrors" class="error-log hidden" role="log" aria-live="polite"></div>
 
+                <!-- Table Controls -->
+                <div class="table-controls">
+                    <input type="text" id="financialFilter" class="filter-input" placeholder="Filter results..." oninput="filterTable('financialTable', this.value)">
+                    <span id="financialCount" class="record-count">0 records</span>
+                </div>
 
-<p id="status"></p>
+                <!-- Results -->
+                <div id="financialResult" class="table-container">
+                    <div class="empty-state">Enter ticker symbols and click <strong>Load Financial Data</strong> to begin.</div>
+                </div>
+            </div>
+        </section>
 
+        <!-- ========================= -->
+        <!-- PORTFOLIO TAB (Phase 2)   -->
+        <!-- ========================= -->
+        <section id="portfolio" class="tab-content" role="tabpanel">
+            <div class="panel empty-state">
+                <h3>Portfolio Management</h3>
+                <p>Saved portfolios and watchlists coming in <strong>Phase 3</strong> (Supabase integration).</p>
+            </div>
+        </section>
 
-<div id="result"></div>
+        <!-- ========================= -->
+        <!-- COMPARISON TAB (Phase 2)  -->
+        <!-- ========================= -->
+        <section id="comparison" class="tab-content" role="tabpanel">
+            <div class="panel empty-state">
+                <h3>Side-by-Side Comparison</h3>
+                <p>Multi-company comparison charts and AI summaries coming in <strong>Phase 2</strong>.</p>
+            </div>
+        </section>
 
+        <!-- ========================= -->
+        <!-- SETTINGS TAB              -->
+        <!-- ========================= -->
+        <section id="settings" class="tab-content" role="tabpanel">
+            <div class="panel">
+                <h2>Settings</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="batchSize">Batch Size</label>
+                        <input type="number" id="batchSize" value="20" min="1" max="100">
+                        <small class="hint">Tickers processed per API batch. Default: 20.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="apiBaseUrl">API Base URL</label>
+                        <input type="url" id="apiBaseUrl" value="https://nasdaq-historical-api.vercel.app">
+                        <small class="hint">Vercel deployment endpoint.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="maxTickers">Max Tickers</label>
+                        <input type="number" id="maxTickers" value="500" min="1" max="1000">
+                        <small class="hint">Hard limit per request to prevent abuse.</small>
+                    </div>
+                </div>
+                <div class="button-row">
+                    <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                    <button class="btn btn-ghost" onclick="resetSettings()">Reset to Defaults</button>
+                </div>
+            </div>
+        </section>
 
-</div>
+    </main>
 
+    <footer class="app-footer">
+        <p>NASDAQ Analysis AI v2.0 &middot; Phase 1 &middot; Official Data Sources Only</p>
+    </footer>
 
+    <!-- Scripts loaded INSIDE the document -->
+    <!-- Uncomment when you create these files: -->
+    <!-- <script src="config.js"></script> -->
+    <!-- <script src="table.js"></script> -->
+    <script src="excel.js"></script>
+    <script src="app.js"></script>
 
-<script src="app.js"></script>
+    <script>
+        // Tab switching
+        function openTab(tabName, btn) {
+            document.querySelectorAll('.tab-content').forEach(t => {
+                t.classList.remove('active');
+                t.setAttribute('aria-hidden', 'true');
+            });
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('active');
+                b.setAttribute('aria-selected', 'false');
+            });
 
+            const target = document.getElementById(tabName);
+            if (target) {
+                target.classList.add('active');
+                target.setAttribute('aria-hidden', 'false');
+            }
+            if (btn) {
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+            }
+        }
+
+        function clearResults(tab) {
+            const resultDiv = document.getElementById(tab + 'Result');
+            const errorDiv = document.getElementById(tab + 'Errors');
+            const statusText = document.getElementById(tab + 'Status');
+            const progressBar = document.getElementById(tab + 'ProgressBar');
+            const progressContainer = document.getElementById(tab + 'Progress');
+            const countSpan = document.getElementById(tab + 'Count');
+
+            if (resultDiv) resultDiv.innerHTML = '<div class="empty-state">Ready for new request.</div>';
+            if (errorDiv) { errorDiv.innerHTML = ''; errorDiv.classList.add('hidden'); }
+            if (statusText) statusText.textContent = 'Ready';
+            if (progressBar) progressBar.style.width = '0%';
+            if (progressContainer) progressContainer.classList.add('hidden');
+            if (countSpan) countSpan.textContent = '0 records';
+
+            if (tab === 'financials') {
+                const controls = document.getElementById('financialControls');
+                if (controls) controls.classList.add('hidden');
+            }
+        }
+
+        function setPeriod(period) {
+            window.selectedPeriod = period;
+            document.querySelectorAll('#financialControls .seg-btn').forEach(b => {
+                if (b.id === 'annualBtn' || b.id === 'quarterBtn') b.classList.remove('active');
+            });
+            const activeId = period === 'annual' ? 'annualBtn' : 'quarterBtn';
+            const activeBtn = document.getElementById(activeId);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            if (typeof loadFinancialPeriod === 'function') {
+                loadFinancialPeriod(period);
+            }
+        }
+
+        function showFinancial(type) {
+            window.selectedType = type;
+            const buttons = ['incomeBtn', 'balanceBtn', 'cashBtn', 'ratioBtn'];
+            buttons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.classList.remove('active');
+            });
+
+            const map = { income: 'incomeBtn', balance: 'balanceBtn', cashflow: 'cashBtn', ratios: 'ratioBtn' };
+            const activeId = map[type];
+            if (activeId) {
+                const activeBtn = document.getElementById(activeId);
+                if (activeBtn) activeBtn.classList.add('active');
+            }
+
+            if (typeof showFinancialData === 'function') {
+                showFinancialData(type);
+            }
+        }
+
+        function filterTable(tableId, query) {
+            if (typeof appFilterTable === 'function') {
+                appFilterTable(tableId, query);
+            }
+        }
+
+        window.selectedPeriod = 'annual';
+        window.selectedType = 'income';
+    </script>
 
 </body>
-
 </html>
