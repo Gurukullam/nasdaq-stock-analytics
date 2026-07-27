@@ -15,9 +15,6 @@ let appConfig = { ...DEFAULT_CONFIG };
 let financialCache = null;
 let historicalCache = null;
 
-/* ------------------------------------------
-   CONFIG
-   ------------------------------------------ */
 function loadConfig() {
     const apiEl   = document.getElementById('apiBaseUrl');
     const batchEl = document.getElementById('batchSize');
@@ -36,9 +33,6 @@ function parseTickers(raw) {
         .filter(s => /^[A-Z]{1,5}$/.test(s));
 }
 
-/* ------------------------------------------
-   UI HELPERS
-   ------------------------------------------ */
 function setProgressVisible(tab, visible) {
     const el = document.getElementById(tab + 'Progress');
     if (el) el.classList.toggle('hidden', !visible);
@@ -71,9 +65,6 @@ function setRecordCount(tab, n) {
     if (el) el.textContent = n.toLocaleString() + ' record' + (n !== 1 ? 's' : '');
 }
 
-/* ------------------------------------------
-   NUMBER FORMATTER
-   ------------------------------------------ */
 function formatFinancialNumber(num) {
     if (num === 0) return '$0';
     const abs = Math.abs(num);
@@ -85,9 +76,6 @@ function formatFinancialNumber(num) {
     return '$' + num.toLocaleString('en-US');
 }
 
-/* ------------------------------------------
-   TABLE RENDERER
-   ------------------------------------------ */
 function renderTable(containerId, rows, tableId) {
     const box = document.getElementById(containerId);
     if (!box) return;
@@ -143,9 +131,6 @@ function renderTable(containerId, rows, tableId) {
     setRecordCount(containerId.replace('Result', ''), rows.length);
 }
 
-/* ------------------------------------------
-   TABLE SORTING
-   ------------------------------------------ */
 const sortMemory = {};
 function sortTable(tableId, col) {
     const table = document.getElementById(tableId);
@@ -185,9 +170,6 @@ function appFilterTable(tableId, query) {
     });
 }
 
-/* ------------------------------------------
-   NETWORK
-   ------------------------------------------ */
 async function fetchWithRetry(url, opts, attempt) {
     attempt = attempt || 1;
     try {
@@ -206,9 +188,6 @@ async function fetchWithRetry(url, opts, attempt) {
     }
 }
 
-/* ------------------------------------------
-   HISTORICAL DATA
-   ------------------------------------------ */
 async function downloadHistory() {
     loadConfig();
     clearErrors('historical');
@@ -261,9 +240,6 @@ async function downloadHistory() {
     }
 }
 
-/* ------------------------------------------
-   FINANCIAL DATA
-   ------------------------------------------ */
 async function loadFinancials() {
     loadConfig();
     clearErrors('financials');
@@ -342,13 +318,67 @@ function showFinancialData(type) {
     renderTable('financialResult', merged, 'financialTable');
 }
 
-/* ------------------------------------------
-   SETTINGS
-   ------------------------------------------ */
 function saveSettings() {
     loadConfig();
     alert('Settings saved for this session.');
 }
 
 function resetSettings() {
-    const apiEl   =
+    const apiEl   = document.getElementById('apiBaseUrl');
+    const batchEl = document.getElementById('batchSize');
+    const maxEl   = document.getElementById('maxTickers');
+
+    if (apiEl)   apiEl.value   = DEFAULT_CONFIG.apiBaseUrl;
+    if (batchEl) batchEl.value = DEFAULT_CONFIG.batchSize;
+    if (maxEl)   maxEl.value   = DEFAULT_CONFIG.maxTickers;
+
+    appConfig = { ...DEFAULT_CONFIG };
+}
+
+function exportExcel(source) {
+    const tableId = source === 'historical' ? 'historicalTable' : 'financialTable';
+    const data = extractTableData(tableId);
+
+    if (typeof generateExcel === 'function') {
+        generateExcel(data, source);
+    } else {
+        downloadCSV(data, 'NASDAQ_' + source + '_' + new Date().toISOString().slice(0,10) + '.csv');
+    }
+}
+
+function extractTableData(tableId) {
+    const table = document.getElementById(tableId);
+    if (!table) return [];
+    const headers = Array.from(table.querySelectorAll('thead th')).map(function(th) { return th.textContent; });
+    return Array.from(table.querySelectorAll('tbody tr')).map(function(tr) {
+        const obj = {};
+        Array.from(tr.children).forEach(function(td, i) {
+            obj[headers[i]] = td.textContent;
+        });
+        return obj;
+    });
+}
+
+function downloadCSV(rows, filename) {
+    if (!rows.length) { alert('No data to export.'); return; }
+    const cols = Object.keys(rows[0]);
+    const csv = [
+        cols.join(','),
+        rows.map(function(r) {
+            return cols.map(function(c) {
+                return '"' + String(r[c] || '').replace(/"/g, '""') + '"';
+            }).join(',');
+        }).join('\n')
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+window.selectedPeriod = 'annual';
+window.selectedType = 'income';
