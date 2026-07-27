@@ -1,6 +1,7 @@
 // ============================================
 // NASDAQ Analysis AI — Core Application Logic
 // Phase 1: Multi-Ticker Historical + Financials
+// Full numbers, no $ prefix, no B/M/T abbreviations
 // ============================================
 
 const DEFAULT_CONFIG = {
@@ -65,15 +66,22 @@ function setRecordCount(tab, n) {
     if (el) el.textContent = n.toLocaleString() + ' record' + (n !== 1 ? 's' : '');
 }
 
+/* ------------------------------------------
+   NUMBER FORMATTER — full numbers, no $, no B/M/T
+   ------------------------------------------ */
 function formatFinancialNumber(num) {
-    if (num === 0) return '$0';
+    if (num === 0) return '0';
     const abs = Math.abs(num);
-    if (abs < 10 && !Number.isInteger(num)) return num.toFixed(2);
-    if (abs >= 1e12) return '$' + (num / 1e12).toFixed(2) + 'T';
-    if (abs >= 1e9) return '$' + (num / 1e9).toFixed(1) + 'B';
-    if (abs >= 1e6) return '$' + (num / 1e6).toFixed(1) + 'M';
-    if (abs >= 1e3) return '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 });
-    return '$' + num.toLocaleString('en-US');
+    // Ratios / EPS (small decimals, < 1000)
+    if (abs < 1000 && !Number.isInteger(num)) {
+        return num.toFixed(2);
+    }
+    // Full integer with commas
+    if (Number.isInteger(num)) {
+        return num.toLocaleString('en-US');
+    }
+    // Large decimal — show full with commas, 2 decimal places
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 function renderTable(containerId, rows, tableId) {
@@ -162,8 +170,8 @@ function sortTable(tableId, col) {
     headers[hIndex].classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
 
     rows.sort(function(a, b) {
-        const av = a.children[hIndex].textContent.replace(/[$,BTM%]/g, '');
-        const bv = b.children[hIndex].textContent.replace(/[$,BTM%]/g, '');
+        const av = a.children[hIndex].textContent.replace(/[,$%]/g, '');
+        const bv = b.children[hIndex].textContent.replace(/[,$%]/g, '');
         const an = parseFloat(av);
         const bn = parseFloat(bv);
         if (!isNaN(an) && !isNaN(bn) && av !== '' && bv !== '') {
