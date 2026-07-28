@@ -1,15 +1,15 @@
 // app.js — NASDAQ Analysis AI Frontend
-// Complete Financial Statements tab with all 4 statement types
+// v2: Buttons below ticker, Ticker column for multi-ticker, unified table
 
 const API_BASE = localStorage.getItem('apiBase') || 'https://nasdaq-historical-api.vercel.app';
 const DEFAULT_BATCH = parseInt(localStorage.getItem('batchSize')) || 5;
 const DEFAULT_MAX_TICKERS = parseInt(localStorage.getItem('maxTickers')) || 20;
 
 // ─── State ───
-let currentTab = 'historical';
+let currentTab = 'financial';
 let financialState = {
-  statement: 'income',   // income | balance | cashflow | ratios
-  period: 'annual',      // annual | quarterly
+  statement: 'income',
+  period: 'annual',
   data: [],
   loading: false,
 };
@@ -36,6 +36,19 @@ function switchTab(tab) {
   currentTab = tab;
   $$('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `panel-${tab}`));
+}
+
+// ─── Clear Functions ───
+function clearHistorical() {
+  $('#historical-tickers').value = '';
+  $('#historical-results').innerHTML = '';
+  historicalData = [];
+}
+
+function clearFinancial() {
+  $('#financial-tickers').value = '';
+  $('#financial-results').innerHTML = '';
+  financialState.data = [];
 }
 
 // ─── Historical Data ───
@@ -86,7 +99,7 @@ function renderHistoricalTable(data) {
         <tbody>
           ${allRecords.map(r => `
             <tr>
-              <td>${r.ticker}</td>
+              <td><span class="ticker-badge">${r.ticker}</span></td>
               <td>${r.date}</td>
               <td>${r.open?.toFixed(2) || '—'}</td>
               <td>${r.high?.toFixed(2) || '—'}</td>
@@ -151,59 +164,145 @@ function renderFinancialTables(data) {
     return;
   }
 
+  const isMultiTicker = data.length > 1;
   const container = document.createElement('div');
   container.className = 'financial-container';
 
+  if (isMultiTicker) {
+    // Unified table with Ticker column for multi-ticker
+    renderUnifiedFinancialTable(data, container);
+  } else {
+    // Single ticker — clean table without redundant ticker column
+    renderSingleFinancialTable(data[0], container);
+  }
+
+  $('#financial-results').innerHTML = '';
+  $('#financial-results').appendChild(container);
+}
+
+function renderSingleFinancialTable(item, container) {
+  const periods = item.periods || [];
+  const rows = item.rows || [];
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'financial-ticker-block';
+
+  const title = document.createElement('h3');
+  title.innerHTML = `<span class="ticker-badge">${item.ticker}</span> — ${capitalize(item.statement)} (${item.period})`;
+  wrapper.appendChild(title);
+
+  const tableWrap = document.createElement('div');
+  tableWrap.className = 'table-wrap';
+
+  const table = document.createElement('table');
+  table.className = 'data-table financial-table';
+
+  // Header
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  headerRow.innerHTML = `<th>Metric</th>` + periods.map(p => `<th>${formatPeriod(p)}</th>`).join('');
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement('tbody');
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    const metricCell = document.createElement('td');
+    metricCell.className = 'metric-name';
+    metricCell.textContent = row.metric;
+    tr.appendChild(metricCell);
+
+    periods.forEach(p => {
+      const cell = document.createElement('td');
+      const val = row.values?.[p];
+      cell.textContent = val?.display || '—';
+      if (val?.raw !== null && val.raw < 0) cell.classList.add('negative');
+      tr.appendChild(cell);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  wrapper.appendChild(tableWrap);
+  container.appendChild(wrapper);
+}
+
+function renderUnifiedFinancialTable(data, container) {
+  // Collect all unique periods across all tickers
+  const allPeriodsSet = new Set();
   data.forEach(item => {
-    const periods = item.periods || [];
-    const rows = item.rows || [];
+    (item.periods || []).forEach(p => allPeriodsSet.add(p));
+  });
+  const allPeriods = Array.from(allPeriodsSet).sort().reverse();
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'financial-ticker-block';
+  // Collect all unique metrics
+  const allMetricsSet = new Set();
+  data.forEach(item => {
+    (item.rows || []).forEach(r => allMetricsSet.add(r.metric));
+  });
+  const allMetrics = Array.from(allMetricsSet);
 
-    const title = document.createElement('h3');
-    title.textContent = `${item.ticker} — ${item.statement.toUpperCase()} (${item.period})`;
-    wrapper.appendChild(title);
+  const wrapper = document.createElement('div');
+  wrapper.className = 'financial-ticker-block';
 
-    const tableWrap = document.createElement('div');
-    tableWrap.className = 'table-wrap';
+  const title = document.createElement('h3');
+  const tickers = data.map(d => `<span class="ticker-badge">${d.ticker}</span>`).join(' ');
+  title.innerHTML = `${tickers} — ${capitalize(data[0].statement)} (${data[0].period})`;
+  wrapper.appendChild(title);
 
-    const table = document.createElement('table');
-    table.className = 'data-table financial-table';
+  const tableWrap = document.createElement('div');
+  tableWrap.className = 'table-wrap';
 
-    // Header
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    headerRow.innerHTML = `<th>Metric</th>` + periods.map(p => `<th>${formatPeriod(p)}</th>`).join('');
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
+  const table = document.createElement('table');
+  table.className = 'data-table financial-table';
 
-    // Body
-    const tbody = document.createElement('tbody');
-    rows.forEach(row => {
+  // Header: Ticker | Metric | Period1 | Period2 | ...
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  headerRow.innerHTML = `<th class="col-ticker">Ticker</th><th class="col-metric">Metric</th>` +
+    allPeriods.map(p => `<th>${formatPeriod(p)}</th>`).join('');
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  // Body: group by metric, then by ticker
+  const tbody = document.createElement('tbody');
+  allMetrics.forEach(metric => {
+    data.forEach(item => {
+      const row = item.rows?.find(r => r.metric === metric);
+      if (!row) return;
+
       const tr = document.createElement('tr');
+
+      // Ticker cell
+      const tickerCell = document.createElement('td');
+      tickerCell.innerHTML = `<span class="ticker-badge">${item.ticker}</span>`;
+      tickerCell.className = 'col-ticker';
+      tr.appendChild(tickerCell);
+
+      // Metric cell
       const metricCell = document.createElement('td');
-      metricCell.className = 'metric-name';
-      metricCell.textContent = row.metric;
+      metricCell.className = 'metric-name col-metric';
+      metricCell.textContent = metric;
       tr.appendChild(metricCell);
 
-      periods.forEach(p => {
+      // Period values
+      allPeriods.forEach(p => {
         const cell = document.createElement('td');
         const val = row.values?.[p];
         cell.textContent = val?.display || '—';
         if (val?.raw !== null && val.raw < 0) cell.classList.add('negative');
         tr.appendChild(cell);
       });
+
       tbody.appendChild(tr);
     });
-    table.appendChild(tbody);
-    tableWrap.appendChild(table);
-    wrapper.appendChild(tableWrap);
-    container.appendChild(wrapper);
   });
 
-  $('#financial-results').innerHTML = '';
-  $('#financial-results').appendChild(container);
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  wrapper.appendChild(tableWrap);
+  container.appendChild(wrapper);
 }
 
 function formatPeriod(dateStr) {
@@ -212,60 +311,61 @@ function formatPeriod(dateStr) {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function capitalize(str) {
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function filterFinancials() {
   const term = $('#financial-filter').value.toLowerCase();
-  $$('.financial-ticker-block').forEach(block => {
-    const rows = block.querySelectorAll('tbody tr');
-    let hasVisible = false;
-    rows.forEach(row => {
-      const metric = row.querySelector('.metric-name')?.textContent.toLowerCase() || '';
-      const visible = metric.includes(term);
-      row.style.display = visible ? '' : 'none';
-      if (visible) hasVisible = true;
-    });
-    block.style.display = hasVisible ? '' : 'none';
+  $$('.financial-table tbody tr').forEach(row => {
+    const ticker = row.querySelector('.col-ticker')?.textContent.toLowerCase() || '';
+    const metric = row.querySelector('.metric-name')?.textContent.toLowerCase() || '';
+    const visible = ticker.includes(term) || metric.includes(term);
+    row.style.display = visible ? '' : 'none';
   });
 }
 
 // ─── Excel Export ───
-async function exportExcel() {
-  if (currentTab === 'historical' && historicalData.length === 0) {
+async function exportHistoricalExcel() {
+  if (historicalData.length === 0) {
     showToast('No historical data to export', 'error'); return;
   }
-  if (currentTab === 'financial' && financialState.data.length === 0) {
+  const allRecords = [];
+  historicalData.forEach(d => {
+    (d.records || []).forEach(r => allRecords.push({
+      Ticker: d.ticker, Date: r.date, Open: r.open, High: r.high,
+      Low: r.low, Close: r.close, Volume: r.volume
+    }));
+  });
+  const ws = XLSX.utils.json_to_sheet(allRecords);
+  const wb = { SheetNames: ['Historical'], Sheets: { Historical: ws } };
+  XLSX.writeFile(wb, `NASDAQ_Historical_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('Historical data exported!', 'success');
+}
+
+async function exportFinancialExcel() {
+  if (financialState.data.length === 0) {
     showToast('No financial data to export', 'error'); return;
   }
 
   const wb = { SheetNames: [], Sheets: {} };
 
-  if (currentTab === 'historical') {
-    const allRecords = [];
-    historicalData.forEach(d => {
-      (d.records || []).forEach(r => allRecords.push({ Ticker: d.ticker, Date: r.date, Open: r.open, High: r.high, Low: r.low, Close: r.close, Volume: r.volume }));
+  financialState.data.forEach(item => {
+    const periods = item.periods || [];
+    const rows = item.rows || [];
+    const sheetData = rows.map(r => {
+      const obj = { Ticker: item.ticker, Metric: r.metric };
+      periods.forEach(p => { obj[formatPeriod(p)] = r.values?.[p]?.raw; });
+      return obj;
     });
-    const ws = XLSX.utils.json_to_sheet(allRecords);
-    wb.SheetNames.push('Historical');
-    wb.Sheets['Historical'] = ws;
-  }
+    const name = `${item.ticker}_${item.statement}`.substring(0, 31);
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    wb.SheetNames.push(name);
+    wb.Sheets[name] = ws;
+  });
 
-  if (currentTab === 'financial') {
-    financialState.data.forEach(item => {
-      const periods = item.periods || [];
-      const rows = item.rows || [];
-      const sheetData = rows.map(r => {
-        const obj = { Metric: r.metric };
-        periods.forEach(p => { obj[formatPeriod(p)] = r.values?.[p]?.raw; });
-        return obj;
-      });
-      const name = `${item.ticker}_${item.statement}`.substring(0, 31);
-      const ws = XLSX.utils.json_to_sheet(sheetData);
-      wb.SheetNames.push(name);
-      wb.Sheets[name] = ws;
-    });
-  }
-
-  XLSX.writeFile(wb, `NASDAQ_Analysis_${new Date().toISOString().slice(0,10)}.xlsx`);
-  showToast('Excel exported!', 'success');
+  XLSX.writeFile(wb, `NASDAQ_Financials_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('Financial data exported!', 'success');
 }
 
 // ─── Settings ───
@@ -306,8 +406,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#btn-load-historical')?.addEventListener('click', loadHistoricalData);
   $('#btn-load-financial')?.addEventListener('click', loadFinancialData);
 
-  // Export
-  $('#btn-export')?.addEventListener('click', exportExcel);
+  // Export buttons
+  $('#btn-export-historical')?.addEventListener('click', exportHistoricalExcel);
+  $('#btn-export-financial')?.addEventListener('click', exportFinancialExcel);
 
   // Filter
   $('#financial-filter')?.addEventListener('input', filterFinancials);
