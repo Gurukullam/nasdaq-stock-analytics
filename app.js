@@ -1,406 +1,322 @@
-// ============================================
-// NASDAQ Analysis AI — Core Application Logic
-// Phase 1: Multi-Ticker Historical + Financials
-// Full numbers, no $ prefix, no B/M/T abbreviations
-// ============================================
+// app.js — NASDAQ Analysis AI Frontend
+// Complete Financial Statements tab with all 4 statement types
 
-const DEFAULT_CONFIG = {
-    apiBaseUrl: 'https://nasdaq-historical-api.vercel.app',
-    batchSize: 20,
-    maxTickers: 500,
-    retryAttempts: 3,
-    retryDelayMs: 1000
+const API_BASE = localStorage.getItem('apiBase') || 'https://nasdaq-historical-api.vercel.app';
+const DEFAULT_BATCH = parseInt(localStorage.getItem('batchSize')) || 5;
+const DEFAULT_MAX_TICKERS = parseInt(localStorage.getItem('maxTickers')) || 20;
+
+// ─── State ───
+let currentTab = 'historical';
+let financialState = {
+  statement: 'income',   // income | balance | cashflow | ratios
+  period: 'annual',      // annual | quarterly
+  data: [],
+  loading: false,
 };
+let historicalData = [];
 
-let appConfig = { ...DEFAULT_CONFIG };
-let financialCache = null;
-let historicalCache = null;
+// ─── Utils ───
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return document.querySelectorAll(sel); }
 
-function loadConfig() {
-    const apiEl   = document.getElementById('apiBaseUrl');
-    const batchEl = document.getElementById('batchSize');
-    const maxEl   = document.getElementById('maxTickers');
-
-    if (apiEl)   appConfig.apiBaseUrl = (apiEl.value || '').trim() || DEFAULT_CONFIG.apiBaseUrl;
-    if (batchEl) appConfig.batchSize  = parseInt(batchEl.value, 10) || DEFAULT_CONFIG.batchSize;
-    if (maxEl)   appConfig.maxTickers = parseInt(maxEl.value, 10)   || DEFAULT_CONFIG.maxTickers;
+function parseTickers(input) {
+  return input.toUpperCase().split(/[,;\s\n]+/).map(s => s.trim()).filter(Boolean);
 }
 
-function parseTickers(raw) {
-    if (!raw) return [];
-    return raw
-        .split(/[\s,;]+/)
-        .map(s => s.trim().toUpperCase())
-        .filter(s => /^[A-Z]{1,5}$/.test(s));
+function showToast(msg, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
 }
 
-function setProgressVisible(tab, visible) {
-    const el = document.getElementById(tab + 'Progress');
-    if (el) el.classList.toggle('hidden', !visible);
+// ─── Tab Switching ───
+function switchTab(tab) {
+  currentTab = tab;
+  $$('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `panel-${tab}`));
 }
 
-function updateProgress(tab, pct, msg) {
-    const bar = document.getElementById(tab + 'ProgressBar');
-    const txt = document.getElementById(tab + 'Status');
-    if (bar) bar.style.width = Math.min(100, Math.max(0, pct)) + '%';
-    if (txt) txt.textContent = msg;
+// ─── Historical Data ───
+async function loadHistoricalData() {
+  const input = $('#historical-tickers').value;
+  const tickers = parseTickers(input);
+  if (tickers.length === 0) { showToast('Enter at least one ticker', 'error'); return; }
+  if (tickers.length > DEFAULT_MAX_TICKERS) { showToast(`Max ${DEFAULT_MAX_TICKERS} tickers`, 'error'); return; }
+
+  const startDate = $('#start-date').value;
+  const endDate = $('#end-date').value;
+  if (!startDate || !endDate) { showToast('Select date range', 'error'); return; }
+
+  $('#historical-loading').style.display = 'block';
+  $('#historical-results').innerHTML = '';
+
+  try {
+    const res = await fetch(`${API_BASE}/api/historical?ticker=${tickers.join(',')}&start=${startDate}&end=${endDate}`);
+    const json = await res.json();
+    historicalData = json.data || [];
+    renderHistoricalTable(historicalData);
+    showToast(`Loaded ${json.count} ticker(s)`, 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    $('#historical-loading').style.display = 'none';
+  }
 }
 
-function logError(tab, msg) {
-    const box = document.getElementById(tab + 'Errors');
-    if (!box) return;
-    box.classList.remove('hidden');
-    const row = document.createElement('div');
-    row.className = 'error-item';
-    row.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
-    box.appendChild(row);
+function renderHistoricalTable(data) {
+  if (!data || data.length === 0) {
+    $('#historical-results').innerHTML = '<p class="no-data">No data found.</p>';
+    return;
+  }
+  const allRecords = [];
+  data.forEach(d => {
+    (d.records || []).forEach(r => {
+      allRecords.push({ ...r, ticker: d.ticker });
+    });
+  });
+
+  const html = `
+    <div class="table-wrap">
+      <table class="data-table" id="historical-table">
+        <thead>
+          <tr><th>Ticker</th><th>Date</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th></tr>
+        </thead>
+        <tbody>
+          ${allRecords.map(r => `
+            <tr>
+              <td>${r.ticker}</td>
+              <td>${r.date}</td>
+              <td>${r.open?.toFixed(2) || '—'}</td>
+              <td>${r.high?.toFixed(2) || '—'}</td>
+              <td>${r.low?.toFixed(2) || '—'}</td>
+              <td>${r.close?.toFixed(2) || '—'}</td>
+              <td>${r.volume?.toLocaleString() || '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p class="record-count">${allRecords.length} records</p>
+  `;
+  $('#historical-results').innerHTML = html;
 }
 
-function clearErrors(tab) {
-    const box = document.getElementById(tab + 'Errors');
-    if (box) { box.innerHTML = ''; box.classList.add('hidden'); }
+// ─── Financial Statements ───
+function setFinancialStatement(type) {
+  financialState.statement = type;
+  $$('.stmt-btn').forEach(b => b.classList.toggle('active', b.dataset.stmt === type));
 }
 
-function setRecordCount(tab, n) {
-    const el = document.getElementById(tab + 'Count');
-    if (el) el.textContent = n.toLocaleString() + ' record' + (n !== 1 ? 's' : '');
+function setFinancialPeriod(period) {
+  financialState.period = period;
+  $$('.period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
 }
 
-/* ------------------------------------------
-   NUMBER FORMATTER — full numbers, no $, no B/M/T
-   ------------------------------------------ */
-function formatFinancialNumber(num) {
-    if (num === 0) return '0';
-    const abs = Math.abs(num);
-    // Ratios / EPS (small decimals, < 1000)
-    if (abs < 1000 && !Number.isInteger(num)) {
-        return num.toFixed(2);
+async function loadFinancialData() {
+  const input = $('#financial-tickers').value;
+  const tickers = parseTickers(input);
+  if (tickers.length === 0) { showToast('Enter at least one ticker', 'error'); return; }
+  if (tickers.length > DEFAULT_MAX_TICKERS) { showToast(`Max ${DEFAULT_MAX_TICKERS} tickers`, 'error'); return; }
+
+  $('#financial-loading').style.display = 'block';
+  $('#financial-results').innerHTML = '';
+  financialState.data = [];
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/financials?ticker=${tickers.join(',')}&statement=${financialState.statement}&period=${financialState.period}`
+    );
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Unknown error');
+
+    financialState.data = json.data || [];
+    renderFinancialTables(financialState.data);
+
+    if (json.errors?.length) {
+      json.errors.forEach(e => showToast(`${e.ticker}: ${e.error}`, 'error'));
     }
-    // Full integer with commas
-    if (Number.isInteger(num)) {
-        return num.toLocaleString('en-US');
-    }
-    // Large decimal — show full with commas, 2 decimal places
-    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    showToast(`Loaded ${json.count} ticker(s)`, 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    $('#financial-loading').style.display = 'none';
+  }
 }
 
-function renderTable(containerId, rows, tableId) {
-    const box = document.getElementById(containerId);
-    if (!box) return;
+function renderFinancialTables(data) {
+  if (!data || data.length === 0) {
+    $('#financial-results').innerHTML = '<p class="no-data">No data found.</p>';
+    return;
+  }
 
-    if (!Array.isArray(rows) || rows.length === 0) {
-        box.innerHTML = '<div class="empty-state">No data returned.</div>';
-        setRecordCount(containerId.replace('Result', ''), 0);
-        return;
-    }
+  const container = document.createElement('div');
+  container.className = 'financial-container';
 
-    const isHistorical = tableId === 'historicalTable';
-    const leftCols = ['Metric', 'Symbol', 'Date'];
-    const priceCols = ['Open', 'High', 'Low', 'Close'];
+  data.forEach(item => {
+    const periods = item.periods || [];
+    const rows = item.rows || [];
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'financial-ticker-block';
+
+    const title = document.createElement('h3');
+    title.textContent = `${item.ticker} — ${item.statement.toUpperCase()} (${item.period})`;
+    wrapper.appendChild(title);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'table-wrap';
 
     const table = document.createElement('table');
-    table.id = tableId;
+    table.className = 'data-table financial-table';
 
-    const cols = Object.keys(rows[0]);
+    // Header
     const thead = document.createElement('thead');
-    const thr = document.createElement('tr');
-    cols.forEach(function(c) {
-        const th = document.createElement('th');
-        if (isHistorical && priceCols.includes(c)) {
-            th.textContent = c + '($)';
-        } else {
-            th.textContent = c;
-        }
-        th.className = leftCols.includes(c) ? 'sortable' : 'sortable numeric';
-        th.onclick = function() { sortTable(tableId, c); };
-        thr.appendChild(th);
-    });
-    thead.appendChild(thr);
+    const headerRow = document.createElement('tr');
+    headerRow.innerHTML = `<th>Metric</th>` + periods.map(p => `<th>${formatPeriod(p)}</th>`).join('');
+    thead.appendChild(headerRow);
     table.appendChild(thead);
 
+    // Body
     const tbody = document.createElement('tbody');
-    rows.forEach(function(r) {
-        const tr = document.createElement('tr');
-        cols.forEach(function(c) {
-            const td = document.createElement('td');
-            let v = r[c];
-            if (v !== '' && v !== null && v !== undefined) {
-                const num = parseFloat(v);
-                if (!isNaN(num) && !leftCols.includes(c)) {
-                    if (isHistorical && c === 'Volume') {
-                        td.textContent = num.toLocaleString('en-US');
-                    } else {
-                        td.textContent = formatFinancialNumber(num);
-                    }
-                } else {
-                    td.textContent = v;
-                }
-            } else {
-                td.textContent = '--';
-                td.style.color = 'var(--text-muted)';
-            }
-            if (!leftCols.includes(c)) td.className = 'numeric';
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      const metricCell = document.createElement('td');
+      metricCell.className = 'metric-name';
+      metricCell.textContent = row.metric;
+      tr.appendChild(metricCell);
+
+      periods.forEach(p => {
+        const cell = document.createElement('td');
+        const val = row.values?.[p];
+        cell.textContent = val?.display || '—';
+        if (val?.raw !== null && val.raw < 0) cell.classList.add('negative');
+        tr.appendChild(cell);
+      });
+      tbody.appendChild(tr);
     });
     table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    wrapper.appendChild(tableWrap);
+    container.appendChild(wrapper);
+  });
 
-    box.innerHTML = '';
-    box.appendChild(table);
-    setRecordCount(containerId.replace('Result', ''), rows.length);
+  $('#financial-results').innerHTML = '';
+  $('#financial-results').appendChild(container);
 }
 
-const sortMemory = {};
-function sortTable(tableId, col) {
-    const table = document.getElementById(tableId);
-    if (!table) return;
-    const tbody = table.querySelector('tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    const headers = Array.from(table.querySelectorAll('thead th'));
-    const hIndex = headers.findIndex(function(th) {
-        return th.textContent === col || th.textContent === col + '($)';
+function formatPeriod(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function filterFinancials() {
+  const term = $('#financial-filter').value.toLowerCase();
+  $$('.financial-ticker-block').forEach(block => {
+    const rows = block.querySelectorAll('tbody tr');
+    let hasVisible = false;
+    rows.forEach(row => {
+      const metric = row.querySelector('.metric-name')?.textContent.toLowerCase() || '';
+      const visible = metric.includes(term);
+      row.style.display = visible ? '' : 'none';
+      if (visible) hasVisible = true;
     });
-    if (hIndex === -1) return;
+    block.style.display = hasVisible ? '' : 'none';
+  });
+}
 
-    const dir = sortMemory[tableId + col] === 'asc' ? 'desc' : 'asc';
-    sortMemory[tableId + col] = dir;
+// ─── Excel Export ───
+async function exportExcel() {
+  if (currentTab === 'historical' && historicalData.length === 0) {
+    showToast('No historical data to export', 'error'); return;
+  }
+  if (currentTab === 'financial' && financialState.data.length === 0) {
+    showToast('No financial data to export', 'error'); return;
+  }
 
-    headers.forEach(function(th) { th.classList.remove('sort-asc', 'sort-desc'); });
-    headers[hIndex].classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+  const wb = { SheetNames: [], Sheets: {} };
 
-    rows.sort(function(a, b) {
-        const av = a.children[hIndex].textContent.replace(/[,$%]/g, '');
-        const bv = b.children[hIndex].textContent.replace(/[,$%]/g, '');
-        const an = parseFloat(av);
-        const bn = parseFloat(bv);
-        if (!isNaN(an) && !isNaN(bn) && av !== '' && bv !== '') {
-            return dir === 'asc' ? an - bn : bn - an;
-        }
-        return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+  if (currentTab === 'historical') {
+    const allRecords = [];
+    historicalData.forEach(d => {
+      (d.records || []).forEach(r => allRecords.push({ Ticker: d.ticker, Date: r.date, Open: r.open, High: r.high, Low: r.low, Close: r.close, Volume: r.volume }));
     });
+    const ws = XLSX.utils.json_to_sheet(allRecords);
+    wb.SheetNames.push('Historical');
+    wb.Sheets['Historical'] = ws;
+  }
 
-    rows.forEach(function(r) { tbody.appendChild(r); });
-}
-
-function appFilterTable(tableId, query) {
-    const table = document.getElementById(tableId);
-    if (!table) return;
-    const q = query.toLowerCase();
-    table.querySelectorAll('tbody tr').forEach(function(row) {
-        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-}
-
-async function fetchWithRetry(url, opts, attempt) {
-    attempt = attempt || 1;
-    try {
-        const res = await fetch(url, opts || {});
-        if (!res.ok && res.status >= 500 && attempt < appConfig.retryAttempts) {
-            throw new Error('Server ' + res.status);
-        }
-        return res;
-    } catch (err) {
-        if (attempt < appConfig.retryAttempts) {
-            const wait = appConfig.retryDelayMs * attempt;
-            await new Promise(function(r) { setTimeout(r, wait); });
-            return fetchWithRetry(url, opts, attempt + 1);
-        }
-        throw err;
-    }
-}
-
-async function downloadHistory() {
-    loadConfig();
-    clearErrors('historical');
-
-    const raw = document.getElementById('symbols') ? document.getElementById('symbols').value : '';
-    const tickers = parseTickers(raw);
-
-    if (!tickers.length) { alert('Enter at least one valid ticker.'); return; }
-    if (tickers.length > appConfig.maxTickers) {
-        alert('Limit is ' + appConfig.maxTickers + ' tickers. You entered ' + tickers.length + '.'); return;
-    }
-
-    const from = document.getElementById('fromDate') ? document.getElementById('fromDate').value : '';
-    const to = document.getElementById('toDate') ? document.getElementById('toDate').value : '';
-
-    setProgressVisible('historical', true);
-    updateProgress('historical', 5, 'Preparing ' + tickers.length + ' ticker(s)...');
-
-    try {
-        const url = new URL(appConfig.apiBaseUrl + '/api/historical');
-        url.searchParams.set('tickers', tickers.join(','));
-        if (from) url.searchParams.set('from', from);
-        if (to) url.searchParams.set('to', to);
-
-        updateProgress('historical', 25, 'Calling NASDAQ API...');
-        const res = await fetchWithRetry(url.toString());
-
-        if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + res.statusText);
-
-        updateProgress('historical', 70, 'Parsing response...');
-        const payload = await res.json();
-
-        let data = payload.data || payload.historical || payload;
-        if (!Array.isArray(data)) data = [];
-
-        if (payload.errors && payload.errors.length) {
-            payload.errors.forEach(function(e) { logError('historical', e); });
-        }
-
-        historicalCache = data;
-        updateProgress('historical', 90, 'Rendering...');
-        renderTable('historicalResult', data, 'historicalTable');
-        updateProgress('historical', 100, 'Done. ' + data.length + ' rows.');
-
-    } catch (err) {
-        logError('historical', err.message);
-        updateProgress('historical', 0, 'Failed.');
-    } finally {
-        setTimeout(function() { setProgressVisible('historical', false); }, 2500);
-    }
-}
-
-async function loadFinancials() {
-    loadConfig();
-    clearErrors('financials');
-
-    const raw = document.getElementById('financialSymbols') ? document.getElementById('financialSymbols').value : '';
-    const tickers = parseTickers(raw);
-
-    if (!tickers.length) { alert('Enter at least one valid ticker.'); return; }
-
-    setProgressVisible('financials', true);
-    updateProgress('financials', 5, 'Loading SEC data for ' + tickers.length + ' ticker(s)...');
-
-    try {
-        const url = new URL(appConfig.apiBaseUrl + '/api/financials');
-        url.searchParams.set('tickers', tickers.join(','));
-
-        updateProgress('financials', 30, 'Fetching SEC Company Facts...');
-        const res = await fetchWithRetry(url.toString());
-
-        if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + res.statusText);
-
-        updateProgress('financials', 70, 'Normalising statements...');
-        const payload = await res.json();
-
-        if (payload.errors && payload.errors.length) {
-            payload.errors.forEach(function(e) { logError('financials', e); });
-        }
-
-        financialCache = payload;
-        window.selectedPeriod = window.selectedPeriod || 'annual';
-        window.selectedType = window.selectedType || 'income';
-
-        const ctrl = document.getElementById('financialControls');
-        if (ctrl) ctrl.classList.remove('hidden');
-
-        showFinancialData(window.selectedType);
-
-        updateProgress('financials', 100, 'Financial data loaded.');
-
-    } catch (err) {
-        logError('financials', err.message);
-        updateProgress('financials', 0, 'Failed.');
-    } finally {
-        setTimeout(function() { setProgressVisible('financials', false); }, 2500);
-    }
-}
-
-function loadFinancialPeriod(period) {
-    window.selectedPeriod = period;
-    if (financialCache) showFinancialData(window.selectedType || 'income');
-}
-
-function showFinancialData(type) {
-    window.selectedType = type;
-    if (!financialCache) return;
-
-    const period = window.selectedPeriod || 'annual';
-    let merged = [];
-
-    const tickers = Object.keys(financialCache).filter(function(k) {
-        return k !== 'errors' && k !== 'metadata';
-    });
-
-    tickers.forEach(function(sym) {
-        const company = financialCache[sym];
-        if (!company) return;
-        const stmt = company[period] ? company[period][type] : null;
-        if (!Array.isArray(stmt)) return;
-
-        stmt.forEach(function(row) {
-            if (!row.Symbol && !row.symbol) row.Symbol = sym;
-        });
-        merged = merged.concat(stmt);
-    });
-
-    renderTable('financialResult', merged, 'financialTable');
-}
-
-function saveSettings() {
-    loadConfig();
-    alert('Settings saved for this session.');
-}
-
-function resetSettings() {
-    const apiEl   = document.getElementById('apiBaseUrl');
-    const batchEl = document.getElementById('batchSize');
-    const maxEl   = document.getElementById('maxTickers');
-
-    if (apiEl)   apiEl.value   = DEFAULT_CONFIG.apiBaseUrl;
-    if (batchEl) batchEl.value = DEFAULT_CONFIG.batchSize;
-    if (maxEl)   maxEl.value   = DEFAULT_CONFIG.maxTickers;
-
-    appConfig = { ...DEFAULT_CONFIG };
-}
-
-function exportExcel(source) {
-    const tableId = source === 'historical' ? 'historicalTable' : 'financialTable';
-    const data = extractTableData(tableId);
-
-    if (typeof generateExcel === 'function') {
-        generateExcel(data, source);
-    } else {
-        downloadCSV(data, 'NASDAQ_' + source + '_' + new Date().toISOString().slice(0,10) + '.csv');
-    }
-}
-
-function extractTableData(tableId) {
-    const table = document.getElementById(tableId);
-    if (!table) return [];
-    const headers = Array.from(table.querySelectorAll('thead th')).map(function(th) { return th.textContent; });
-    return Array.from(table.querySelectorAll('tbody tr')).map(function(tr) {
-        const obj = {};
-        Array.from(tr.children).forEach(function(td, i) {
-            obj[headers[i]] = td.textContent;
-        });
+  if (currentTab === 'financial') {
+    financialState.data.forEach(item => {
+      const periods = item.periods || [];
+      const rows = item.rows || [];
+      const sheetData = rows.map(r => {
+        const obj = { Metric: r.metric };
+        periods.forEach(p => { obj[formatPeriod(p)] = r.values?.[p]?.raw; });
         return obj;
+      });
+      const name = `${item.ticker}_${item.statement}`.substring(0, 31);
+      const ws = XLSX.utils.json_to_sheet(sheetData);
+      wb.SheetNames.push(name);
+      wb.Sheets[name] = ws;
     });
+  }
+
+  XLSX.writeFile(wb, `NASDAQ_Analysis_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('Excel exported!', 'success');
 }
 
-function downloadCSV(rows, filename) {
-    if (!rows.length) { alert('No data to export.'); return; }
-    const cols = Object.keys(rows[0]);
-    const csv = [
-        cols.join(','),
-        rows.map(function(r) {
-            return cols.map(function(c) {
-                return '"' + String(r[c] || '').replace(/"/g, '""') + '"';
-            }).join(',');
-        }).join('\n')
-    ].join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+// ─── Settings ───
+function saveSettings() {
+  const apiBase = $('#settings-api').value.trim();
+  const batch = parseInt($('#settings-batch').value) || 5;
+  const maxTickers = parseInt($('#settings-max').value) || 20;
+  if (apiBase) localStorage.setItem('apiBase', apiBase);
+  localStorage.setItem('batchSize', String(batch));
+  localStorage.setItem('maxTickers', String(maxTickers));
+  showToast('Settings saved', 'success');
 }
 
-window.selectedPeriod = 'annual';
-window.selectedType = 'income';
+function loadSettings() {
+  $('#settings-api').value = localStorage.getItem('apiBase') || API_BASE;
+  $('#settings-batch').value = localStorage.getItem('batchSize') || '5';
+  $('#settings-max').value = localStorage.getItem('maxTickers') || '20';
+}
+
+// ─── Init ───
+document.addEventListener('DOMContentLoaded', () => {
+  // Tab buttons
+  $$('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // Statement type buttons
+  $$('.stmt-btn').forEach(btn => {
+    btn.addEventListener('click', () => setFinancialStatement(btn.dataset.stmt));
+  });
+
+  // Period buttons
+  $$('.period-btn').forEach(btn => {
+    btn.addEventListener('click', () => setFinancialPeriod(btn.dataset.period));
+  });
+
+  // Load buttons
+  $('#btn-load-historical')?.addEventListener('click', loadHistoricalData);
+  $('#btn-load-financial')?.addEventListener('click', loadFinancialData);
+
+  // Export
+  $('#btn-export')?.addEventListener('click', exportExcel);
+
+  // Filter
+  $('#financial-filter')?.addEventListener('input', filterFinancials);
+
+  // Settings
+  $('#btn-save-settings')?.addEventListener('click', saveSettings);
+  loadSettings();
+
+  // Set defaults
+  setFinancialStatement('income');
+  setFinancialPeriod('annual');
+});
